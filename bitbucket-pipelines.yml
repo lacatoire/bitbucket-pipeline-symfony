@@ -1,0 +1,115 @@
+image: php:8.4-cli-alpine
+
+clone:
+  depth: 1
+
+definitions:
+  caches:
+    phpstan: .phpstan
+    sonarcloud: .sonar/cache
+    composer: ~/.composer/cache
+  services:
+    docker:
+      memory: 3072
+    mysql:
+      image: mysql:8.0
+      environment:
+        MYSQL_DATABASE: ${MYSQL_DATABASE}
+        MYSQL_USER: ${MYSQL_USER} # default test_user
+        MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+        MYSQL_PASSWORD: ${MYSQL_PASSWORD} # default test_user_password
+
+  steps:
+    - step: &sonarcloud
+        name: Analyse on SonarCloud
+        clone:
+          depth: full  # SonarCloud need the full historic
+        caches:
+          - docker
+          - sonarcloud
+        script:
+          - chmod 777 .sonar -R || true # required to create a ./sonar/tmp dir and others under pipe-docker
+          - pipe: sonarsource/sonarcloud-scan:2.0.0
+            variables:
+              SONAR_SCANNER_OPTS: -Xmx3072m
+              SONAR_TOKEN: ${SONARCLOUD_TOKEN}
+          - pipe: sonarsource/sonarcloud-quality-gate:0.1.6
+            variables:
+              SONAR_TOKEN: ${SONARCLOUD_TOKEN}
+        services:
+          - docker
+
+    - step: &linter
+        caches:
+          - composer
+        name: Analyse with PhpCs (PSR-12)
+        script:
+          - apk add --no-cache git unzip libzip-dev
+          - if [ ! -f /usr/local/bin/composer ]; then curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer; fi
+          - export COMPOSER_ALLOW_SUPERUSER=1
+          - export PHP_CS_FIXER_IGNORE_ENV=1
+          - composer install --prefer-dist --no-scripts --no-ansi --no-interaction
+          - git diff --name-only --diff-filter=d origin/main | grep '\.php$' | xargs -r composer codesniffer
+
+    - step: &phpstan
+        caches:
+          - composer
+          - phpstan
+        name: Analyse with PHPStan
+        script:
+          - apk add --no-cache git unzip libzip-dev
+          - if [ ! -f /usr/local/bin/composer ]; then curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer; fi
+          - export COMPOSER_ALLOW_SUPERUSER=1
+          - export PATH=$PATH:/usr/local/bin
+          - composer install --prefer-dist --no-scripts --no-ansi --no-interaction
+          - composer phpstan-ci
+
+    - step: &unit_phpunit
+        caches:
+          - composer
+        name: Unit Tests with PhpUnit
+        script:
+          - apk add --no-cache git unzip libzip-dev
+          - if [ ! -f /usr/local/bin/composer ]; then curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer; fi
+          - export COMPOSER_ALLOW_SUPERUSER=1
+          - docker-php-ext-install calendar && docker-php-ext-configure calendar
+          - pecl install pcov && docker-php-ext-enable pcov
+          - composer install --prefer-dist --no-scripts --no-ansi --no-interaction
+          - composer phpunit
+
+    - step: &integration_phpunit
+        caches:
+          - composer
+        name: Integration Tests with PhpUnit
+        script:
+          - apk add --no-cache git unzip libzip-dev mariadb-client php-intl
+          - if [ ! -f /usr/local/bin/composer ]; then curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer; fi
+          - export COMPOSER_ALLOW_SUPERUSER=1
+          - docker-php-ext-install pdo pdo_mysql intl && docker-php-ext-enable pdo_mysql intl
+          - pecl install pcov && docker-php-ext-enable pcov
+          - composer install --prefer-dist --no-scripts --no-ansi --no-interaction
+          - cp .env.test .env
+          - composer phpunit-integration
+        services:
+          - mysql
+
+    - step: &outdated-branch
+        name: Check Outdated Branch
+        image: alpine/git
+        script:
+          - git fetch origin main
+          - >
+            git merge-base --is-ancestor origin/main HEAD ||
+            (echo "❌ Error: Branch is outdated. Please merge main into your branch." >&2 && exit 1)
+
+
+pipelines:
+  pull-requests:
+    '**':
+      - step: *outdated-branch
+      - parallel:
+          - step: *linter
+          - step: *phpstan
+          - step: *unit_phpunit
+          - step: *integration_phpunit
+      - step: *sonarcloud
