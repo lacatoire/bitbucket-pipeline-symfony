@@ -1,5 +1,8 @@
 image: php:8.4-cli-alpine
 
+options:
+  size: 16x
+
 clone:
   depth: 1
 
