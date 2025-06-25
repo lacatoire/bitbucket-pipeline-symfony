@@ -102,7 +102,6 @@ definitions:
             git merge-base --is-ancestor origin/main HEAD ||
             (echo "❌ Error: Branch is outdated. Please merge main into your branch." >&2 && exit 1)
 
-
 pipelines:
   pull-requests:
     '**':

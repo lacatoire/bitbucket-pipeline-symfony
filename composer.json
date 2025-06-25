@@ -1,0 +1,18 @@
+{
+  "require": {
+    "php": "8.4.*"
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "*",
+    "phpstan/phpstan-symfony": "^2",
+    "phpunit/php-code-coverage": "^11.0",
+    "phpunit/phpunit": "^11.3"
+  },
+  "scripts": {
+    "codesniffer": "PHP_CS_FIXER_IGNORE_ENV=1 php vendor/bin/php-cs-fixer fix src tests --dry-run --verbose --show-progress=dots --config=.docker/php-cs-fixer/.php-cs-fixer.php",
+    "codesniffer-fix": "PHP_CS_FIXER_IGNORE_ENV=1 php vendor/bin/php-cs-fixer fix src tests --verbose --show-progress=dots --config=.docker/php-cs-fixer/.php-cs-fixer.php",
+    "phpstan": "php -d memory_limit=2G ./vendor/bin/phpstan analyse --configuration .docker/phpstan/phpstan.neon",
+    "phpunit": "php -d memory_limit=2G ./vendor/bin/phpunit --configuration .docker/phpunit/phpunit.xml.dist ./tests/unit",
+    "phpunit-integration": "php -d memory_limit=2G ./vendor/bin/phpunit --configuration .docker/phpunit/phpunit.xml.dist ./tests/Controller"
+  }
+}
