@@ -64,13 +64,13 @@ These scripts allow:
 To run a script, use:
 
 ```sh
-composer run <script_name>
+composer <script_name>
 ```
 
 Example:
 
 ```sh
-composer run phpstan
+composer phpstan
 ```
 
 ## 🏗️ Pipelines
